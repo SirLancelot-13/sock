@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 
 #define BUFFER_SIZE 1024
+#define SERVER_PORT 8080
 
 struct Server {
     int domain;
