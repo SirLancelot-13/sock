@@ -15,6 +15,38 @@ void initialize_db(){
     };
 }
 
+int insert_or_ignore(sqlite3 *db, const char* ip_addr, const char* usname){
+    sqlite3_stmt *stmt;
+    const char *sql = "insert or ignore into username (usname, ip_addr) values (?, ?);";
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL)!=SQLITE_OK){
+        perror("Failed to prepare the sqlite statement.\n");
+    }
+
+    if (sqlite3_bind_text(stmt, 1, usname , -1, SQLITE_STATIC) != SQLITE_OK){
+        perror("Fucked up binding string\n");
+    }
+    if (sqlite3_bind_text(stmt, 2, ip_addr , -1, SQLITE_STATIC) != SQLITE_OK){
+        perror("Fucked up binding string\n");
+    }
+
+    int rc=sqlite3_step(stmt);
+    if (rc==SQLITE_DONE){
+        if (sqlite3_changes64(db)>0){
+            printf("Row successfully added to the table.\n");
+        }
+        else {
+            printf("IP already exists in the database.\n");
+        }
+    } else {
+        printf("Execution error: %s\n", sqlite3_errmsg(db));
+        perror("Failed execution");
+    }
+
+    sqlite3_finalize(stmt);
+    return (rc==SQLITE_DONE);
+}
+
 struct Server server_constructor(int domain, int port, int service, int protocol, int backlog, unsigned long interface, void (*launch)(struct Server *server))
 {
     struct Server server;
@@ -65,6 +97,9 @@ void launch(struct Server *server)
         inet_ntop(AF_INET, &(client_address.sin_addr.s_addr), str, INET_ADDRSTRLEN);
 
         printf("IP Address of the client: %s\n\n",str);
+
+
+
         if (bytesRead >= 0)
         {
             buffer[bytesRead] = '\0';
