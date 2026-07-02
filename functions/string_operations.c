@@ -2,6 +2,11 @@
 #include <string.h>
 #include <stdlib.h>
 
+enum Request {
+    get,
+    post
+};
+
 char *send_post_request(char *host, char *endpoint, char *content){
     char *req=malloc(1024);
     snprintf(req, 1024, "POST %s HTTP/1.1\r\nHost: %s\r\nConnection: keep-alive\r\nContent-Type: application/xml\r\nContent-Length: %zu\r\n%s\r\n\r\n",endpoint,host,strlen(content),content);
@@ -18,4 +23,18 @@ char *encode_get_response_text(char *content){
     char *res=malloc(1024);
     snprintf(res, 1024, "HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nContent-Type: application/xml\r\nContent-Length: %zu\r\n%s",strlen(content),content);
     return res;
+}
+
+char *get_host_name(char *request, enum Request r_type){
+    char *content;
+    char *host;
+    char *endpoint;
+    if (r_type == get){
+        sscanf(request, "GET %s HTTP/1.1\r\nHost: %s\r\n%s", endpoint, host, content);
+    } else if (r_type == post){
+        sscanf(request, "POST %s HTTP/1.1\r\nHost: %s\r\n%s", endpoint, host, content);
+    } else {
+        return NULL;
+    }
+    return host;
 }
