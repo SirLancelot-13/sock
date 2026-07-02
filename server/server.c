@@ -24,10 +24,10 @@ int insert_or_ignore(sqlite3 *db, const char* ip_addr, const char* usname){
     }
 
     if (sqlite3_bind_text(stmt, 1, usname , -1, SQLITE_STATIC) != SQLITE_OK){
-        perror("Fucked up binding string\n");
+        perror("Messed up binding string\n");
     }
     if (sqlite3_bind_text(stmt, 2, ip_addr , -1, SQLITE_STATIC) != SQLITE_OK){
-        perror("Fucked up binding string\n");
+        perror("Messed up binding string\n");
     }
 
     int rc=sqlite3_step(stmt);
@@ -46,6 +46,25 @@ int insert_or_ignore(sqlite3 *db, const char* ip_addr, const char* usname){
     sqlite3_finalize(stmt);
     return (rc==SQLITE_DONE);
 }
+
+char *get_username(sqlite3 *db, const char* ip_addr){
+    sqlite3_stmt *stmt;
+    const char *sql="select usname from username where ip_addr='?'";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL)!=SQLITE_OK){
+        perror("Couldn't prepare query\n");
+    }
+    if (sqlite3_bind_text(stmt, 1, ip_addr, -1, SQLITE_STATIC)){
+        perror("couldn't bind text to IP query\n"); 
+    }
+    int rc=sqlite3_step(stmt);
+    if (rc==SQLITE_ROW){
+        return sqlite3_column_text(stmt, 0);
+    }
+    else {
+        return "username_not_found";
+    }
+}
+
 
 struct Server server_constructor(int domain, int port, int service, int protocol, int backlog, unsigned long interface, void (*launch)(struct Server *server))
 {

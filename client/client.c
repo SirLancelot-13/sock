@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include "client.h"
 #include "server.h"
+#include "string_operations.h"
 
 int connect_to_server(const char *ip, int port)
 {
@@ -36,7 +37,7 @@ int connect_to_server(const char *ip, int port)
         return 1;
     }
 
-    const char *request = "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    const char *request = send_get_request("127.0.0.1","/");
     if (send(sock_fd, request, strlen(request), 0) < 0)
     {
         perror("send");
