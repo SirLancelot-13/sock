@@ -4,10 +4,11 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <sys/socket.h>
 #include "client.h"
-#include "server.h"
-#include "string_operations.h"
+#include "../server/server.h"
+#include "../functions/string_operations.h"
 
 int connect_to_server(const char *ip, int port)
 {
@@ -37,7 +38,7 @@ int connect_to_server(const char *ip, int port)
         return 1;
     }
 
-    const char *request = send_get_request("127.0.0.1","/");
+    const char *request = send_get_request("127.0.0.1", "/");
     if (send(sock_fd, request, strlen(request), 0) < 0)
     {
         perror("send");
@@ -61,8 +62,13 @@ int connect_to_server(const char *ip, int port)
     return 0;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
-    return connect_to_server("127.0.0.1", SERVER_PORT);
+    if (argc != 2){
+        printf("Insufficient Arguments.\n");
+        return 1;
+    }
+    else{
+        return connect_to_server("127.0.0.1", SERVER_PORT);
+    }
 }
-
