@@ -1,14 +1,22 @@
-#include <sqlite3.h>
+#include "db_operations.h"
 #include <stdlib.h>
 #include <stdio.h>
-
+#include <string.h>
 
 sqlite3 *db;
-void initialize_db(){
-    if ( sqlite3_open("database.db", &db) != 0){
-        perror("database failed to open idk\n");
+
+void initialize_db() {
+    const char *db_path = "database.db";
+    FILE *f = fopen("server/database.db", "r");
+    if (f) {
+        fclose(f);
+        db_path = "server/database.db";
+    }
+
+    if (sqlite3_open(db_path, &db) != SQLITE_OK) {
+        perror("database failed to open\n");
         exit(1);
-    };
+    }
 }
 
 int insert_or_ignore(sqlite3 *db, const char* ip_addr, const char* usname){
@@ -45,18 +53,27 @@ int insert_or_ignore(sqlite3 *db, const char* ip_addr, const char* usname){
 
 char *get_username(sqlite3 *db, const char* ip_addr){
     sqlite3_stmt *stmt;
-    const char *sql="select usname from username where ip_addr='?'";
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL)!=SQLITE_OK){
+    const char *sql = "select usname from username where ip_addr=?";
+    char *username = NULL;
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
         perror("Couldn't prepare query\n");
+        return NULL;
     }
-    if (sqlite3_bind_text(stmt, 1, ip_addr, -1, SQLITE_STATIC)){
+
+    if (sqlite3_bind_text(stmt, 1, ip_addr, -1, SQLITE_STATIC) != SQLITE_OK) {
         perror("couldn't bind text to IP query\n");
     }
-    int rc=sqlite3_step(stmt);
-    if (rc==SQLITE_ROW){
-        return sqlite3_column_text(stmt, 0);
+
+    int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        const unsigned char *text = sqlite3_column_text(stmt, 0);
+        if (text) {
+            username = strdup((const char *)text);
+        }
     }
-    else {
-        return "username_not_found";
-    }
+
+    sqlite3_finalize(stmt);
+    return username;
 }
+

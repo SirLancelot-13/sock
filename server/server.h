@@ -22,5 +22,6 @@ struct Server {
 
 struct Server server_constructor(int domain, int port, int service, int protocol, int backlog, unsigned long interface,void (*launch)(struct Server *server));
 void launch(struct Server *server);
+void response(int new_socket, char *buffer);
 
 #endif

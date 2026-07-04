@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-enum Request { get, post, unknown };
+#include "string_operations.h"
 
 enum Request get_request_type(char *request) {
   if (strncmp(request, "GET", 3) == 0) {

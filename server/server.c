@@ -2,7 +2,6 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -45,7 +44,6 @@ struct Server server_constructor(int domain, int port, int service,
 void launch(struct Server *server) {
   char buffer[BUFFER_SIZE];
   while (1) {
-    char str[INET_ADDRSTRLEN];
     printf(" Waiting for Connection...");
     int addrlen = sizeof(server->address);
     struct sockaddr_in client_address;
@@ -55,31 +53,10 @@ void launch(struct Server *server) {
     if (bytesRead >= 0) {
       buffer[bytesRead] = '\0';
       puts(buffer);
+      response(new_socket, buffer);
     } else {
       perror("Couldn't read buffer.");
+      close(new_socket);
     }
-    struct sockaddr_in peer_addr;
-    socklen_t peer_addr_len = sizeof(peer_addr);
-    if (getpeername(new_socket, (struct sockaddr *)&peer_addr,
-                    &peer_addr_len) == 0) {
-      char peer_ip[INET_ADDRSTRLEN];
-      inet_ntop(AF_INET, &(peer_addr.sin_addr.s_addr), peer_ip,
-                INET_ADDRSTRLEN);
-      printf("IP Address of the peer: %s\n\n", peer_ip);
-    }
-    // Using the new_socket here as it is non-blocking.
-    char *response = "HTTP/1.1 200 OK\r\n"
-                     "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-                     "<!DOCTYPE html>\r\n"
-                     "<html>\r\n"
-                     "<head>\r\n"
-                     "<title>Testing Basic HTTP-SERVER</title>\r\n"
-                     "</head>\r\n"
-                     "<body>\r\n"
-                     "Hello, World!\r\n"
-                     "</body>\r\n"
-                     "</html>\r\n";
-    write(new_socket, response, strlen(response));
-    close(new_socket);
   }
 }
