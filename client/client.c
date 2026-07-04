@@ -9,14 +9,15 @@
 #include "client.h"
 #include "../server/server.h"
 #include "../functions/string_operations.h"
+#include "../functions/db_operations.h"
 
-int connect_to_server(const char *client_ip, const char *server_ip, int port)
+int establish_connection(const char *client_ip, const char *server_ip, int port)
 {
     int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd < 0)
     {
         perror("socket");
-        return 1;
+        return -1;
     }
 
     int opt = 1;
@@ -30,14 +31,14 @@ int connect_to_server(const char *client_ip, const char *server_ip, int port)
     {
         perror("inet_pton client_ip");
         close(sock_fd);
-        return 1;
+        return -1;
     }
 
     if (bind(sock_fd, (struct sockaddr *)&client_addr, sizeof(client_addr)) < 0)
     {
         perror("bind");
         close(sock_fd);
-        return 1;
+        return -1;
     }
 
     struct sockaddr_in server_addr;
@@ -49,13 +50,24 @@ int connect_to_server(const char *client_ip, const char *server_ip, int port)
     {
         perror("inet_pton server");
         close(sock_fd);
-        return 1;
+        return -1;
     }
 
     if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
     {
         perror("connect");
         close(sock_fd);
+        return -1;
+    }
+
+    return sock_fd;
+}
+
+int connect_to_server(const char *client_ip, const char *server_ip, int port)
+{
+    int sock_fd = establish_connection(client_ip, server_ip, port);
+    if (sock_fd < 0)
+    {
         return 1;
     }
 
@@ -85,13 +97,71 @@ int connect_to_server(const char *client_ip, const char *server_ip, int port)
     return 0;
 }
 
+int send_message_to_server(const char *client_ip, const char *server_ip, int port, const char *message)
+{
+    int sock_fd = establish_connection(client_ip, server_ip, port);
+    if (sock_fd < 0)
+    {
+        return 1;
+    }
+
+    char *request = send_post_request((char *)server_ip, "/", (char *)message);
+    if (send(sock_fd, request, strlen(request), 0) < 0)
+    {
+        perror("send");
+        free(request);
+        close(sock_fd);
+        return 1;
+    }
+    free(request);
+
+    char response[4096];
+    ssize_t received = recv(sock_fd, response, sizeof(response) - 1, 0);
+    if (received < 0)
+    {
+        perror("recv");
+        close(sock_fd);
+        return 1;
+    }
+
+    response[received] = '\0';
+    printf("%s\n", response);
+
+    close(sock_fd);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
-    if (argc != 2){
+    if (argc < 2){
         printf("Insufficient Arguments.\n");
         return 1;
     }
-    else{
-        return connect_to_server(argv[1], "127.0.0.1", SERVER_PORT);
+
+    const char *username = argv[1];
+    const char *client_ip = (argc >= 3) ? argv[2] : "127.0.0.1";
+
+    initialize_db();
+    insert_or_ignore(db, client_ip, username);
+    sqlite3_close(db);
+
+    int login_res = connect_to_server(client_ip, "127.0.0.1", SERVER_PORT);
+    if (login_res != 0) {
+        printf("Failed to connect/log in to server.\n");
+        return login_res;
     }
+
+    char message[256];
+    while (1) {
+        printf("Enter message: ");
+        if (scanf(" %255[^\n]", message) != 1) {
+            break;
+        }
+        if (strcmp(message, "exit") == 0) {
+            break;
+        }
+        send_message_to_server(client_ip, "127.0.0.1", SERVER_PORT, message);
+    }
+
+    return 0;
 }

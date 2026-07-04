@@ -69,7 +69,26 @@ char *extract_endpoint_type_shi(char *request) {
     sscanf(request, "POST %127s", endpoint);
   } else {
     free(endpoint);
-    return NULL;
   }
   return endpoint;
+}
+
+char *extract_post_content(const char *request) {
+  const char *content_length_ptr = strstr(request, "Content-Length:");
+  if (!content_length_ptr) return NULL;
+
+  const char *next_line = strstr(content_length_ptr, "\r\n");
+  if (!next_line) return NULL;
+  next_line += 2; // skip past \r\n
+
+  int len = 0;
+  if (sscanf(content_length_ptr, "Content-Length: %d", &len) != 1) return NULL;
+
+  if (len <= 0) return NULL;
+
+  char *content = malloc(len + 1);
+  if (!content) return NULL;
+  memcpy(content, next_line, len);
+  content[len] = '\0';
+  return content;
 }

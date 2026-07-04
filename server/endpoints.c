@@ -19,26 +19,65 @@ void response(int new_socket, char *buffer) {
 
     char *endpoint = extract_endpoint_type_shi(buffer);
     if (endpoint != NULL && strcmp(endpoint, "/") == 0) {
-        char *username = NULL;
-        if (peer_ip[0] != '\0') {
-            username = get_username(db, peer_ip);
-        }
+        enum Request req_type = get_request_type(buffer);
+        if (req_type == get) {
+            char *username = NULL;
+            if (peer_ip[0] != '\0') {
+                username = get_username(db, peer_ip);
+            }
 
-        const char *display_name = (username != NULL) ? username : "no username";
+            const char *display_name = (username != NULL) ? username : "no username";
+            char *messages_str = get_last_10_messages(db);
 
-        char response_str[512];
-        snprintf(response_str, sizeof(response_str),
-                 "HTTP/1.1 200 OK\r\n"
-                 "Content-Type: text/plain; charset=UTF-8\r\n"
-                 "Content-Length: %zu\r\n"
-                 "Connection: close\r\n\r\n"
-                 "%s",
-                 strlen(display_name), display_name);
+            char response_body[4096];
+            if (messages_str) {
+                snprintf(response_body, sizeof(response_body), "%s\n%s", display_name, messages_str);
+                free(messages_str);
+            } else {
+                snprintf(response_body, sizeof(response_body), "%s\n", display_name);
+            }
 
-        write(new_socket, response_str, strlen(response_str));
+            char response_str[8192];
+            snprintf(response_str, sizeof(response_str),
+                     "HTTP/1.1 200 OK\r\n"
+                     "Content-Type: text/plain; charset=UTF-8\r\n"
+                     "Content-Length: %zu\r\n"
+                     "Connection: close\r\n\r\n"
+                     "%s",
+                     strlen(response_body), response_body);
 
-        if (username) {
-            free(username);
+            write(new_socket, response_str, strlen(response_str));
+
+            if (username) {
+                free(username);
+            }
+        } else if (req_type == post) {
+            char *username = NULL;
+            if (peer_ip[0] != '\0') {
+                username = get_username(db, peer_ip);
+            }
+            const char *sender = (username != NULL) ? username : "anonymous";
+
+            char *message = extract_post_content(buffer);
+            if (message != NULL) {
+                insert_message(db, sender, message);
+                free(message);
+            }
+
+            const char *response_body = "Message received";
+            char response_str[512];
+            snprintf(response_str, sizeof(response_str),
+                     "HTTP/1.1 200 OK\r\n"
+                     "Content-Type: text/plain; charset=UTF-8\r\n"
+                     "Content-Length: %zu\r\n"
+                     "Connection: close\r\n\r\n"
+                     "%s",
+                     strlen(response_body), response_body);
+            write(new_socket, response_str, strlen(response_str));
+
+            if (username) {
+                free(username);
+            }
         }
     }
     if (endpoint != NULL) {
