@@ -6,11 +6,10 @@
 sqlite3 *db;
 
 void initialize_db() {
-    const char *db_path = "database.db";
-    FILE *f = fopen("server/database.db", "r");
-    if (f) {
-        fclose(f);
-        db_path = "server/database.db";
+    const char *db_path = getenv("DB_PATH");
+    if (!db_path) {
+        /* Default to workspace root database.db when running from server/ */
+        db_path = "../database.db";
     }
 
     if (sqlite3_open(db_path, &db) != SQLITE_OK) {
@@ -19,7 +18,7 @@ void initialize_db() {
     }
 
     char *err_msg = NULL;
-    const char *create_username_sql = 
+    const char *create_username_sql =
         "CREATE TABLE IF NOT EXISTS username("
         "usname TEXT, "
         "ip_addr TEXT, "
@@ -30,7 +29,7 @@ void initialize_db() {
         sqlite3_free(err_msg);
     }
 
-    const char *create_messages_sql = 
+    const char *create_messages_sql =
         "CREATE TABLE IF NOT EXISTS messages("
         "id INTEGER PRIMARY KEY AUTOINCREMENT, "
         "username TEXT, "
@@ -127,12 +126,12 @@ int insert_message(sqlite3 *db, const char *username, const char *message) {
 char *get_last_10_messages(sqlite3 *db) {
     sqlite3_stmt *stmt;
     const char *sql = "SELECT username, message FROM (SELECT id, username, message FROM messages ORDER BY id DESC LIMIT 10) ORDER BY id ASC;";
-    
+
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
         perror("Failed to prepare get_last_10_messages statement.\n");
         return NULL;
     }
-    
+
     size_t capacity = 1024;
     char *result = malloc(capacity);
     if (!result) {
@@ -141,14 +140,14 @@ char *get_last_10_messages(sqlite3 *db) {
     }
     result[0] = '\0';
     size_t length = 0;
-    
+
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         const unsigned char *uname = sqlite3_column_text(stmt, 0);
         const unsigned char *msg = sqlite3_column_text(stmt, 1);
-        
+
         const char *display_uname = uname ? (const char *)uname : "anonymous";
         const char *display_msg = msg ? (const char *)msg : "";
-        
+
         size_t needed = strlen(display_uname) + strlen(display_msg) + 5;
         if (length + needed >= capacity) {
             capacity *= 2;
@@ -160,14 +159,13 @@ char *get_last_10_messages(sqlite3 *db) {
             }
             result = new_result;
         }
-        
+
         int written = snprintf(result + length, capacity - length, "[%s]: %s\n", display_uname, display_msg);
         if (written > 0) {
             length += written;
         }
     }
-    
+
     sqlite3_finalize(stmt);
     return result;
 }
-

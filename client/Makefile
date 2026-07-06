@@ -1,17 +1,17 @@
 CC = gcc
 CFLAGS = -Wall -Wextra
-LDFLAGS = -lsqlite3
+LDFLAGS =
 
 FUNC_DIR = ../functions
 TARGET = client_bin
 
 OBJS = client.o
-FUNC_OBJS = $(FUNC_DIR)/db_operations.o $(FUNC_DIR)/string_operations.o
+FUNC_OBJS = $(FUNC_DIR)/string_operations.o
 
 all: func_objs $(TARGET)
 
 func_objs:
-	$(MAKE) -C $(FUNC_DIR)
+	$(MAKE) -C $(FUNC_DIR) string_operations.o
 
 $(TARGET): $(OBJS) $(FUNC_OBJS)
 	$(CC) $(CFLAGS) $(OBJS) $(FUNC_OBJS) -o $(TARGET) $(LDFLAGS)

@@ -9,7 +9,6 @@
 #include "client.h"
 #include "../server/server.h"
 #include "../functions/string_operations.h"
-#include "../functions/db_operations.h"
 
 int establish_connection(const char *client_ip, const char *server_ip, int port)
 {
@@ -141,9 +140,21 @@ int main(int argc, char **argv)
     const char *username = argv[1];
     const char *client_ip = (argc >= 3) ? argv[2] : "127.0.0.1";
 
-    initialize_db();
-    insert_or_ignore(db, client_ip, username);
-    sqlite3_close(db);
+    /* Register username with server via POST /login */
+    {
+        int sock_fd = establish_connection(client_ip, "127.0.0.1", SERVER_PORT);
+        if (sock_fd >= 0) {
+            char *req = send_post_request((char *)"127.0.0.1", "/login", (char *)username);
+            send(sock_fd, req, strlen(req), 0);
+            free(req);
+            char resp[512];
+            recv(sock_fd, resp, sizeof(resp) - 1, 0);
+            close(sock_fd);
+        } else {
+            printf("Failed to register username with server.\n");
+            return 1;
+        }
+    }
 
     int login_res = connect_to_server(client_ip, "127.0.0.1", SERVER_PORT);
     if (login_res != 0) {

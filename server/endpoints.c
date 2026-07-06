@@ -80,6 +80,29 @@ void response(int new_socket, char *buffer) {
             }
         }
     }
+    else if (endpoint != NULL && strcmp(endpoint, "/login") == 0) {
+        enum Request req_type2 = get_request_type(buffer);
+        if (req_type2 == post) {
+            char *username = extract_post_content(buffer);
+            if (username != NULL) {
+                if (peer_ip[0] != '\0') {
+                    insert_or_ignore(db, peer_ip, username);
+                }
+                free(username);
+            }
+
+            const char *response_body = "Login registered";
+            char response_str[512];
+            snprintf(response_str, sizeof(response_str),
+                     "HTTP/1.1 200 OK\r\n"
+                     "Content-Type: text/plain; charset=UTF-8\r\n"
+                     "Content-Length: %zu\r\n"
+                     "Connection: close\r\n\r\n"
+                     "%s",
+                     strlen(response_body), response_body);
+            write(new_socket, response_str, strlen(response_str));
+        }
+    }
     if (endpoint != NULL) {
         free(endpoint);
     }
