@@ -6,12 +6,12 @@ FUNC_DIR = ../functions
 TARGET = server_bin
 
 OBJS = main.o server.o endpoints.o
-FUNC_OBJS = $(FUNC_DIR)/db_operations.o
+FUNC_OBJS = $(FUNC_DIR)/db_operations.o $(FUNC_DIR)/crypt.o $(FUNC_DIR)/websocket.o
 
 all: func_objs $(TARGET)
 
 func_objs:
-	$(MAKE) -C $(FUNC_DIR) db_operations.o
+	$(MAKE) -C $(FUNC_DIR) db_operations.o crypt.o websocket.o
 
 $(TARGET): $(OBJS) $(FUNC_OBJS)
 	$(CC) $(CFLAGS) $(OBJS) $(FUNC_OBJS) -o $(TARGET) $(LDFLAGS)
@@ -19,7 +19,7 @@ $(TARGET): $(OBJS) $(FUNC_OBJS)
 main.o: main.c server.h $(FUNC_DIR)/db_operations.h
 	$(CC) $(CFLAGS) -c main.c -o main.o
 
-server.o: server.c server.h
+server.o: server.c server.h $(FUNC_DIR)/websocket.h
 	$(CC) $(CFLAGS) -c server.c -o server.o
 
 # endpoints.c directly #includes ../functions/string_operations.c,

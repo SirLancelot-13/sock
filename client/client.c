@@ -130,6 +130,131 @@ int send_message_to_server(const char *client_ip, const char *server_ip, int por
     return 0;
 }
 
+#include "../functions/websocket.h"
+#include <sys/select.h>
+
+void send_websocket_client_text_frame(int fd, const char *message) {
+    size_t len = strlen(message);
+    uint8_t header[14];
+    header[0] = 0x81; // FIN = 1, Opcode = 1 (Text)
+    
+    int header_len = 2;
+    if (len < 126) {
+        header[1] = len | 0x80; // MASK = 1, payload len
+    } else if (len <= 65535) {
+        header[1] = 126 | 0x80;
+        header[2] = (len >> 8) & 0xFF;
+        header[3] = len & 0xFF;
+        header_len = 4;
+    } else {
+        header[1] = 127 | 0x80;
+        for (int i = 0; i < 8; i++) {
+            header[2 + i] = (len >> ((7 - i) * 8)) & 0xFF;
+        }
+        header_len = 10;
+    }
+    
+    // Generate a mask key (simple client hardcoded/pseudo-random key)
+    uint8_t masking_key[4] = {0xAA, 0xBB, 0xCC, 0xDD};
+    memcpy(header + header_len, masking_key, 4);
+    header_len += 4;
+    
+    // XOR Encrypt Payload
+    uint8_t *masked_payload = malloc(len);
+    for (size_t i = 0; i < len; i++) {
+        masked_payload[i] = message[i] ^ masking_key[i % 4];
+    }
+    
+    send(fd, header, header_len, 0);
+    send(fd, masked_payload, len, 0);
+    free(masked_payload);
+}
+
+int run_realtime_chat(const char *server_ip, int port) {
+    int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    inet_pton(AF_INET, server_ip, &server_addr.sin_addr);
+    
+    if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("connect error");
+        return -1;
+    }
+    
+    // Send standard HTTP WebSocket upgrade request
+    char handshake[512];
+    snprintf(handshake, sizeof(handshake),
+             "GET /ws HTTP/1.1\r\n"
+             "Host: %s:%d\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+             "Sec-WebSocket-Version: 13\r\n\r\n",
+             server_ip, port);
+    send(sock_fd, handshake, strlen(handshake), 0);
+    
+    // Read the server handshake response
+    char response[1024];
+    ssize_t received = recv(sock_fd, response, sizeof(response) - 1, 0);
+    if (received <= 0 || !strstr(response, "101 Switching Protocols")) {
+        printf("WebSocket handshake failed.\n");
+        close(sock_fd);
+        return -1;
+    }
+    printf("Handshake succeeded. You are now in the real-time chat!\n");
+    
+    fd_set read_fds;
+    char input_buffer[256];
+    char recv_buffer[BUFFER_SIZE];
+    
+    printf("Enter message: ");
+    fflush(stdout);
+
+    while (1) {
+        FD_ZERO(&read_fds);
+        FD_SET(STDIN_FILENO, &read_fds);
+        FD_SET(sock_fd, &read_fds);
+        
+        int activity = select(sock_fd + 1, &read_fds, NULL, NULL, NULL);
+        if (activity < 0) {
+            perror("select error");
+            break;
+        }
+        
+        // A. User entered a message on the console
+        if (FD_ISSET(STDIN_FILENO, &read_fds)) {
+            if (fgets(input_buffer, sizeof(input_buffer), stdin) == NULL) break;
+            
+            // Remove newline
+            input_buffer[strcspn(input_buffer, "\n")] = '\0';
+            if (strcmp(input_buffer, "exit") == 0) break;
+            
+            send_websocket_client_text_frame(sock_fd, input_buffer);
+            printf("Enter message: ");
+            fflush(stdout);
+        }
+        
+        // B. Server sent a broadcasted message
+        if (FD_ISSET(sock_fd, &read_fds)) {
+            int opcode;
+            int len = read_websocket_frame(sock_fd, recv_buffer, sizeof(recv_buffer) - 1, &opcode);
+            if (len <= 0) {
+                printf("\nDisconnected from server.\n");
+                break;
+            }
+            recv_buffer[len] = '\0';
+            printf("\n%s\n", recv_buffer);
+            printf("Enter message: ");
+            fflush(stdout);
+        }
+    }
+    
+    close(sock_fd);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2){
@@ -162,17 +287,6 @@ int main(int argc, char **argv)
         return login_res;
     }
 
-    char message[256];
-    while (1) {
-        printf("Enter message: ");
-        if (scanf(" %255[^\n]", message) != 1) {
-            break;
-        }
-        if (strcmp(message, "exit") == 0) {
-            break;
-        }
-        send_message_to_server(client_ip, "127.0.0.1", SERVER_PORT, message);
-    }
-
-    return 0;
+    // Call interactive real-time WebSocket chat
+    return run_realtime_chat("127.0.0.1", SERVER_PORT);
 }
