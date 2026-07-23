@@ -255,7 +255,7 @@ int run_realtime_chat(const char *server_ip, int port) {
     return 0;
 }
 
-int main_interface(int argc, char **argv) //Creative renaming. Yes, I know.
+int main(int argc, char **argv) //Creative renaming. Yes, I know.
 {
     if (argc < 2){
         printf("Insufficient Arguments.\n");
@@ -289,4 +289,155 @@ int main_interface(int argc, char **argv) //Creative renaming. Yes, I know.
 
     // Call interactive real-time WebSocket chat
     return run_realtime_chat("127.0.0.1", SERVER_PORT);
+}
+
+/* ========================================================================= */
+/* Cgo Explicit API Implementation                                           */
+/* ========================================================================= */
+
+sock_client_t* sock_client_create(const char *server_ip, int port) {
+    sock_client_t *client = (sock_client_t *)calloc(1, sizeof(sock_client_t));
+    if (!client) return NULL;
+
+    if (server_ip) {
+        strncpy(client->server_ip, server_ip, sizeof(client->server_ip) - 1);
+    } else {
+        strncpy(client->server_ip, "127.0.0.1", sizeof(client->server_ip) - 1);
+    }
+    client->port = port > 0 ? port : SERVER_PORT;
+    client->socket_fd = -1;
+    client->connected = 0;
+
+    return client;
+}
+
+int sock_client_connect(sock_client_t *client, const char *username) {
+    if (!client) return -1;
+
+    // Optional login registration via HTTP POST /login
+    if (username && strlen(username) > 0) {
+        int reg_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (reg_fd >= 0) {
+            struct sockaddr_in srv_addr;
+            memset(&srv_addr, 0, sizeof(srv_addr));
+            srv_addr.sin_family = AF_INET;
+            srv_addr.sin_port = htons(client->port);
+            inet_pton(AF_INET, client->server_ip, &srv_addr.sin_addr);
+
+            if (connect(reg_fd, (struct sockaddr *)&srv_addr, sizeof(srv_addr)) == 0) {
+                char *req = send_post_request(client->server_ip, "/login", (char *)username);
+                if (req) {
+                    send(reg_fd, req, strlen(req), 0);
+                    free(req);
+                    char resp[512];
+                    recv(reg_fd, resp, sizeof(resp) - 1, 0);
+                }
+            }
+            close(reg_fd);
+        }
+    }
+
+    // Establish main WebSocket socket connection
+    int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_fd < 0) return -1;
+
+    int opt = 1;
+    setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(client->port);
+
+    if (inet_pton(AF_INET, client->server_ip, &server_addr.sin_addr) <= 0) {
+        close(sock_fd);
+        return -1;
+    }
+
+    if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        close(sock_fd);
+        return -1;
+    }
+
+    // Send HTTP WebSocket Upgrade request
+    char handshake[512];
+    snprintf(handshake, sizeof(handshake),
+             "GET /ws HTTP/1.1\r\n"
+             "Host: %s:%d\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+             "Sec-WebSocket-Version: 13\r\n\r\n",
+             client->server_ip, client->port);
+
+    if (send(sock_fd, handshake, strlen(handshake), 0) < 0) {
+        close(sock_fd);
+        return -1;
+    }
+
+    char response[1024];
+    ssize_t received = recv(sock_fd, response, sizeof(response) - 1, 0);
+    if (received <= 0 || !strstr(response, "101 Switching Protocols")) {
+        close(sock_fd);
+        return -1;
+    }
+
+    client->socket_fd = sock_fd;
+    client->connected = 1;
+    return 0;
+}
+
+int sock_client_send_message(sock_client_t *client, const char *message) {
+    if (!client || !client->connected || client->socket_fd < 0 || !message) {
+        return -1;
+    }
+
+    send_websocket_client_text_frame(client->socket_fd, message);
+    return 0;
+}
+
+char* sock_client_recv_message(sock_client_t *client, int timeout_ms) {
+    if (!client || !client->connected || client->socket_fd < 0) {
+        return NULL;
+    }
+
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(client->socket_fd, &read_fds);
+
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+
+    int activity = select(client->socket_fd + 1, &read_fds, NULL, NULL, &tv);
+    if (activity > 0 && FD_ISSET(client->socket_fd, &read_fds)) {
+        char recv_buffer[4096];
+        int opcode = 0;
+        int len = read_websocket_frame(client->socket_fd, recv_buffer, sizeof(recv_buffer) - 1, &opcode);
+        if (len > 0) {
+            recv_buffer[len] = '\0';
+            return strdup(recv_buffer);
+        } else if (len <= 0) {
+            client->connected = 0;
+        }
+    }
+
+    return NULL;
+}
+
+void sock_client_free_string(char *str) {
+    if (str) {
+        free(str);
+    }
+}
+
+void sock_client_destroy(sock_client_t *client) {
+    if (client) {
+        if (client->socket_fd >= 0) {
+            close(client->socket_fd);
+            client->socket_fd = -1;
+        }
+        client->connected = 0;
+        free(client);
+    }
 }

@@ -9,33 +9,67 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// ServerMsg carries incoming WebSocket message payloads received from Cgo
+type ServerMsg string
+
 type Model struct {
 	cursor      int
 	msgList     map[string]string
-	msgListKeys []string //As shitty as this is, this is temporary, ideally I'd refactor the schema to include a timestamp.
+	msgListKeys []string
 	message     string
+	bridge      *ClientBridge
+	status      string
 }
 
-func (m Model) Init() tea.Cmd {
-	return nil
+// waitForIncomingMessage polls Cgo bridge asynchronously via tea.Cmd
+func waitForIncomingMessage(bridge *ClientBridge) tea.Cmd {
+	return func() tea.Msg {
+		if bridge == nil {
+			return nil
+		}
+		msg, err := bridge.Recv(50) // Poll with 50ms timeout
+		if err != nil || msg == "" {
+			return nil
+		}
+		return ServerMsg(msg)
+	}
 }
 
-func loadInitialMessages() Model {
+func loadInitialMessages(bridge *ClientBridge) Model {
 	return Model{
 		cursor: 0,
 		msgList: map[string]string{
-			"1": "Welcome to Socket Chat TUI!", //TODO: Add cgo-based message fetching endpoint from client.c
+			"1": "Connected to Socket Chat TUI via Cgo!",
 		},
 		msgListKeys: []string{"1"},
 		message:     "",
+		bridge:      bridge,
+		status:      "Connected",
 	}
+}
+
+func (m Model) Init() tea.Cmd {
+	if m.bridge != nil {
+		return waitForIncomingMessage(m.bridge)
+	}
+	return nil
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	case ServerMsg:
+		key := fmt.Sprintf("%d", len(m.msgList)+1)
+		m.msgList[key] = string(msg)
+		m.msgListKeys = append(m.msgListKeys, key)
+		return m, waitForIncomingMessage(m.bridge)
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
+			if m.bridge != nil {
+				m.bridge.Close()
+			}
 			return m, tea.Quit
 		case "backspace":
 			if len(m.message) > 0 {
@@ -54,12 +88,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			if m.message != "" {
+				if m.bridge != nil {
+					_ = m.bridge.Send(m.message)
+				}
 				key := fmt.Sprintf("%d", len(m.msgList)+1)
-				m.msgList[key] = m.message
+				m.msgList[key] = "Me: " + m.message
 				m.msgListKeys = append(m.msgListKeys, key)
 				m.message = ""
 				m.cursor = 0
 			}
+			return m, waitForIncomingMessage(m.bridge)
 		default:
 			if match, _ := regexp.MatchString(`^[a-zA-Z0-9[:punct:]\s]$`, msg.String()); match {
 				m.message += msg.String()
@@ -67,7 +105,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	return m, nil
+	return m, waitForIncomingMessage(m.bridge)
 }
 
 func (m Model) View() string {
@@ -97,7 +135,15 @@ func (m Model) View() string {
 }
 
 func main() {
-	p := tea.NewProgram(loadInitialMessages())
+	bridge, err := NewClientBridge("127.0.0.1", 8080)
+	if err != nil {
+		fmt.Printf("Warning: Failed to create client bridge: %v\n", err)
+	} else {
+		_ = bridge.Connect("tui_user")
+		defer bridge.Close()
+	}
+
+	p := tea.NewProgram(loadInitialMessages(bridge))
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
 		os.Exit(1)
