@@ -1,5 +1,11 @@
 #ifndef client_h
 #define client_h
+typedef struct{
+    int sock_fd;
+    char *ip;
+    char *port;
+    char *message;
+} client_t;
 int establish_connection(const char *client_ip, const char *server_ip, int port);
 int send_message_to_server(const char *client_ip, const char *server_ip, int port, const char *message);
 void send_websocket_client_text_frame(int fd, const char *message);
