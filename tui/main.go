@@ -125,9 +125,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.status = "Error: Not connected to server"
 					return m, nil
 				}
-				key := fmt.Sprintf("%d", len(m.msgList)+1)
-				m.msgList[key] = "Me: " + m.message
-				m.msgListKeys = append(m.msgListKeys, key)
+				// key := fmt.Sprintf("%d", len(m.msgList)+1)
+				// m.msgList[key] = "Me: " + m.message
+				// m.msgListKeys = append(m.msgListKeys, key)
 				m.message = ""
 				m.cursor = 0
 			}
