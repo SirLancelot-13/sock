@@ -255,41 +255,41 @@ int run_realtime_chat(const char *server_ip, int port) {
     return 0;
 }
 
-int main(int argc, char **argv) //Creative renaming. Yes, I know.
-{
-    if (argc < 2){
-        printf("Insufficient Arguments.\n");
-        return 1;
-    }
+// int main(int argc, char **argv) //Creative renaming. Yes, I know.
+// {
+//     if (argc < 2){
+//         printf("Insufficient Arguments.\n");
+//         return 1;
+//     }
 
-    const char *username = argv[1];
-    const char *client_ip = (argc >= 3) ? argv[2] : "127.0.0.1";
+//     const char *username = argv[1];
+//     const char *client_ip = (argc >= 3) ? argv[2] : "127.0.0.1";
 
-    /* Register username with server via POST /login */
-    {
-        int sock_fd = establish_connection(client_ip, "127.0.0.1", SERVER_PORT);
-        if (sock_fd >= 0) {
-            char *req = send_post_request((char *)"127.0.0.1", "/login", (char *)username);
-            send(sock_fd, req, strlen(req), 0);
-            free(req);
-            char resp[512];
-            recv(sock_fd, resp, sizeof(resp) - 1, 0);
-            close(sock_fd);
-        } else {
-            printf("Failed to register username with server.\n");
-            return 1;
-        }
-    }
+//     /* Register username with server via POST /login */
+//     {
+//         int sock_fd = establish_connection(client_ip, "127.0.0.1", SERVER_PORT);
+//         if (sock_fd >= 0) {
+//             char *req = send_post_request((char *)"127.0.0.1", "/login", (char *)username);
+//             send(sock_fd, req, strlen(req), 0);
+//             free(req);
+//             char resp[512];
+//             recv(sock_fd, resp, sizeof(resp) - 1, 0);
+//             close(sock_fd);
+//         } else {
+//             printf("Failed to register username with server.\n");
+//             return 1;
+//         }
+//     }
 
-    int login_res = connect_to_server(client_ip, "127.0.0.1", SERVER_PORT);
-    if (login_res != 0) {
-        printf("Failed to connect/log in to server.\n");
-        return login_res;
-    }
+//     int login_res = connect_to_server(client_ip, "127.0.0.1", SERVER_PORT);
+//     if (login_res != 0) {
+//         printf("Failed to connect/log in to server.\n");
+//         return login_res;
+//     }
 
-    // Call interactive real-time WebSocket chat
-    return run_realtime_chat("127.0.0.1", SERVER_PORT);
-}
+//     // Call interactive real-time WebSocket chat
+//     return run_realtime_chat("127.0.0.1", SERVER_PORT);
+// }
 
 /* ========================================================================= */
 /* Cgo Explicit API Implementation                                           */

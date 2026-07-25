@@ -12,6 +12,12 @@ import (
 // ServerMsg carries incoming WebSocket message payloads received from Cgo
 type ServerMsg string
 
+type errMsg struct {
+	err error
+}
+
+type tickMsg struct{}
+
 type Model struct {
 	cursor      int
 	msgList     map[string]string
@@ -24,38 +30,52 @@ type Model struct {
 // waitForIncomingMessage polls Cgo bridge asynchronously via tea.Cmd
 func waitForIncomingMessage(bridge *ClientBridge) tea.Cmd {
 	return func() tea.Msg {
-		if bridge == nil {
+		if bridge == nil || !bridge.IsConnected() {
 			return nil
 		}
 		msg, err := bridge.Recv(50) // Poll with 50ms timeout
-		if err != nil || msg == "" {
-			return nil
+		if err != nil {
+			return errMsg{err: err}
+		}
+		if msg == "" {
+			return tickMsg{}
 		}
 		return ServerMsg(msg)
 	}
 }
 
-func loadInitialMessages(bridge *ClientBridge) Model {
+func loadInitialMessages(bridge *ClientBridge, connErr error) Model {
+	status := "Connected"
+	initMsg := "Connected to Socket Chat TUI via Cgo!"
+	if connErr != nil {
+		status = fmt.Sprintf("Disconnected (%v)", connErr)
+		initMsg = fmt.Sprintf("Connection status: %v", connErr)
+	}
+
 	return Model{
 		cursor: 0,
 		msgList: map[string]string{
-			"1": "Connected to Socket Chat TUI via Cgo!",
+			"1": initMsg,
 		},
 		msgListKeys: []string{"1"},
 		message:     "",
 		bridge:      bridge,
-		status:      "Connected",
+		status:      status,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	if m.bridge != nil {
+	if m.bridge != nil && m.bridge.IsConnected() {
 		return waitForIncomingMessage(m.bridge)
 	}
 	return nil
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.msgList == nil {
+		m.msgList = make(map[string]string)
+	}
+
 	switch msg := msg.(type) {
 
 	case ServerMsg:
@@ -63,6 +83,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.msgList[key] = string(msg)
 		m.msgListKeys = append(m.msgListKeys, key)
 		return m, waitForIncomingMessage(m.bridge)
+
+	case tickMsg:
+		return m, waitForIncomingMessage(m.bridge)
+
+	case errMsg:
+		m.status = fmt.Sprintf("Disconnected: %v", msg.err)
+		return m, nil
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -88,8 +115,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			if m.message != "" {
-				if m.bridge != nil {
-					_ = m.bridge.Send(m.message)
+				if m.bridge != nil && m.bridge.IsConnected() {
+					err := m.bridge.Send(m.message)
+					if err != nil {
+						m.status = fmt.Sprintf("Send error: %v", err)
+						return m, nil
+					}
+				} else {
+					m.status = "Error: Not connected to server"
+					return m, nil
 				}
 				key := fmt.Sprintf("%d", len(m.msgList)+1)
 				m.msgList[key] = "Me: " + m.message
@@ -105,14 +139,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	return m, waitForIncomingMessage(m.bridge)
+	return m, nil
 }
 
 func (m Model) View() string {
 	var s strings.Builder
 
 	s.WriteString("===========================================\n")
-	s.WriteString("           Random ahh chat thingy          \n")
+	s.WriteString("           Socket Chat TUI                 \n")
+	s.WriteString(fmt.Sprintf(" Status: %s\n", m.status))
 	s.WriteString("===========================================\n\n")
 
 	s.WriteString("Messages:\n")
@@ -136,14 +171,15 @@ func (m Model) View() string {
 
 func main() {
 	bridge, err := NewClientBridge("127.0.0.1", 8080)
+	var connErr error
 	if err != nil {
-		fmt.Printf("Warning: Failed to create client bridge: %v\n", err)
+		connErr = err
 	} else {
-		_ = bridge.Connect("tui_user")
+		connErr = bridge.Connect("tui_user")
 		defer bridge.Close()
 	}
 
-	p := tea.NewProgram(loadInitialMessages(bridge))
+	p := tea.NewProgram(loadInitialMessages(bridge, connErr))
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
 		os.Exit(1)
