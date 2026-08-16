@@ -3,9 +3,8 @@
 
 #include <sqlite3.h>
 
-extern sqlite3 *db;
 
-void initialize_db();
+sqlite3 *initialize_db();
 int insert_or_ignore(sqlite3 *db, const char* ip_addr, const char* usname);
 char *get_username(sqlite3 *db, const char* ip_addr);
 int insert_message(sqlite3 *db, const char *username, const char *message);

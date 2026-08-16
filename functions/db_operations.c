@@ -3,9 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
-sqlite3 *db;
 
-void initialize_db() {
+sqlite3 *initialize_db() {
+    sqlite3 *db = NULL;
     const char *db_path = getenv("DB_PATH");
     if (!db_path) {
         /* Default to workspace root database.db when running from server/ */
@@ -39,6 +39,7 @@ void initialize_db() {
         fprintf(stderr, "Failed to create messages table: %s\n", err_msg);
         sqlite3_free(err_msg);
     }
+    return db;
 }
 
 int insert_or_ignore(sqlite3 *db, const char* ip_addr, const char* usname){
